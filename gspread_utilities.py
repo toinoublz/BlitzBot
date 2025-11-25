@@ -1,9 +1,12 @@
+import asyncio
+from datetime import datetime
+
+import discord
 import gspread_asyncio
 import gspread_formatting
 from google.oauth2.service_account import Credentials
 from oauth2client.service_account import ServiceAccountCredentials
-import discord
-import asyncio
+
 
 def get_creds():
     # To obtain a service account JSON file, follow these steps:
@@ -32,62 +35,62 @@ async def connect_gsheet_api() -> gspread_asyncio.AsyncioGspreadClient:
     clientg = await agcm.authorize()
     return clientg
 
+
 async def gspread_new_registration(member: dict):
     clientg = await connect_gsheet_api()
-    spreadsheet = await clientg.open("[ORGA] Hell Cup Inscriptions ")
+    spreadsheet = await clientg.open("[ORGA] Guess and Give Inscriptions")
     worksheet = await spreadsheet.worksheet("Inscrits")
-    await worksheet.append_row([member["discordId"], member["geoguessrId"], member["surname"], 0])
+    await worksheet.append_row(
+        [member["discordId"], member["geoguessrId"], member["surname"], member["flag"]]
+    )
     return
 
 
-async def gspread_new_team(member1: discord.Member, member2: discord.Member):
+async def gspread_new_team(team: list[dict]):
     clientg = await connect_gsheet_api()
-    spreadsheet = await clientg.open("[ORGA] Hell Cup Inscriptions ")
-    worksheet = await spreadsheet.worksheet("Inscrits")
-    lines = await worksheet.get_all_records()
-    player1Updated = player2Updated = False
-    team = {"member1_discordId": str(member1.id), "member2_discordId": str(member2.id)}
-    for lineNumber, line in enumerate(lines):
-        if str(line["ID Discord"]) == team["member1_discordId"]:
-            await worksheet.update_cell(lineNumber + 2, 4, 1)
-            team["member1_geoguessrId"] = line["ID GeoGuessr"]
-            team["member1_surname"] = line["Pseudo/surnom"]
-            player1Updated = True
-        if str(line["ID Discord"]) == team["member2_discordId"]:
-            await worksheet.update_cell(lineNumber + 2, 4, 1)
-            team["member2_geoguessrId"] = line["ID GeoGuessr"]
-            team["member2_surname"] = line["Pseudo/surnom"]
-            player2Updated = True
-        if player1Updated and player2Updated:
-            break
+    spreadsheet = await clientg.open("[ORGA] Guess and Give Inscriptions")
     worksheet = await spreadsheet.worksheet("Teams")
-    await worksheet.append_row([team["member1_discordId"], team["member1_geoguessrId"], team["member2_discordId"], team["member2_geoguessrId"], team["member1_surname"], team["member2_surname"], team["member1_surname"] + '_' + team["member2_surname"]])
+    await worksheet.append_row(
+        [
+            team[0]["discordId"],
+            team[0]["geoguessrId"],
+            team[0]["surname"],
+            team[0]["flag"],
+            team[1]["discordId"],
+            team[1]["geoguessrId"],
+            team[1]["surname"],
+            team[1]["flag"],
+        ]
+    )
+    return
 
-    return [team["member1_surname"], team["member2_surname"]]
 
-
-async def get_qualified_teams_names():
+async def add_duels_infos(data: dict):
     clientg = await connect_gsheet_api()
-    spreadsheet = await clientg.open("[ORGA] Hell Cup Inscriptions ")
-    worksheet = await spreadsheet.worksheet("Qualifiés")
-    data = await worksheet.get_all_records()
-    qualified_teams_names = [team["Nom d'équipe"] for team in data]
-    return qualified_teams_names
-
-async def get_bets_discordIds():
-    clientg = await connect_gsheet_api()
-    spreadsheet = await clientg.open("[ORGA] Hell Cup Inscriptions ")
-    worksheet = await spreadsheet.worksheet("Bets")
-    data = await worksheet.get_all_records()
-    bet_discordIds = [int(bet["DiscordId"]) for bet in data]
-    return bet_discordIds
-
-async def place_bet(discordId: int, bet1: str, bet2: str, bet3: str, isAnonymous: bool, discordName: str):
-    clientg = await connect_gsheet_api()
-    spreadsheet = await clientg.open("[ORGA] Hell Cup Inscriptions ")
-    worksheet = await spreadsheet.worksheet("Bets")
-    await worksheet.append_row([str(discordId), bet1, bet2, bet3, isAnonymous, discordName])
-
-
-if __name__ == "__main__":
-    print(asyncio.run(get_qualified_teams_names()))
+    spreadsheet = await clientg.open(
+        "Guess & Give Summer 2025 - International Duels - Hellias Version"
+    )
+    worksheet = await spreadsheet.worksheet("raw_data")
+    await worksheet.append_row(
+        [
+            datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "",
+            "",
+            "",
+            data["link"],
+            f"=HYPERLINK(\"{data['mapLink']}\", \"{data['mapName']}\")",
+            data["gamemode"],
+            data["initialHealth"],
+            data["numberOfRounds"],
+            data["numberOfPlayers"],
+            data["allCountries"],
+            data["WnumberOfPlayers"],
+            data["WuserNames"],
+            data["Wcountries"],
+            data["LnumberOfPlayers"],
+            data["LuserNames"],
+            data["Lcountries"],
+        ],
+        value_input_option="USER_ENTERED",
+    )
+    return
