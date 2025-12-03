@@ -1,17 +1,21 @@
-import asyncio
 from datetime import datetime
+import os
 
-import discord
 import gspread_asyncio
-import gspread_formatting
 from google.oauth2.service_account import Credentials
-from oauth2client.service_account import ServiceAccountCredentials
 
 
 def get_creds():
-    # To obtain a service account JSON file, follow these steps:
-    # https://gspread.readthedocs.io/en/latest/oauth2.html#for-bots-using-service-account
-    creds = Credentials.from_service_account_file("creds.json")
+    """
+    Returns a Credentials object with the necessary scopes to use the Google Sheets API.
+    
+    To obtain a service account JSON file, follow these steps:
+    https://gspread.readthedocs.io/en/latest/oauth2.html#for-bots-using-service-account
+    
+    Returns:
+        Credentials: A Credentials object with the necessary scopes.
+    """
+    creds = Credentials.from_service_account_file(os.path.join(os.path.dirname(__file__), "..", "json", "creds.json"))
     scoped = creds.with_scopes(
         [
             "https://spreadsheets.google.com/feeds",
@@ -24,19 +28,30 @@ def get_creds():
 
 
 async def connect_gsheet_api() -> gspread_asyncio.AsyncioGspreadClient:
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/drive",
-    ]
-
+    """
+    Connects to the Google Sheets API using the credentials in the service account JSON file.
+    
+    Returns:
+        gspread_asyncio.AsyncioGspreadClient: A client object to interact with the Google Sheets API.
+    """
     agcm = gspread_asyncio.AsyncioGspreadClientManager(get_creds)
     clientg = await agcm.authorize()
     return clientg
 
 
 async def gspread_new_registration(member: dict):
+    """
+    Registers a new player in the Google Sheets database.
+
+    Parameters
+    ----------
+    member : dict
+        A dictionary containing information about the player.
+
+    Returns
+    -------
+    None
+    """
     clientg = await connect_gsheet_api()
     spreadsheet = await clientg.open("[ORGA] Guess and Give Inscriptions")
     worksheet = await spreadsheet.worksheet("Inscrits")
@@ -47,6 +62,18 @@ async def gspread_new_registration(member: dict):
 
 
 async def gspread_new_team(team: list[dict]):
+    """
+    Registers a new team in the Google Sheets database.
+
+    Parameters
+    ----------
+    team : list[dict]
+        A list of dictionaries, each containing information about a player in the team.
+
+    Returns
+    -------
+    None
+    """
     clientg = await connect_gsheet_api()
     spreadsheet = await clientg.open("[ORGA] Guess and Give Inscriptions")
     worksheet = await spreadsheet.worksheet("Teams")
@@ -66,6 +93,18 @@ async def gspread_new_team(team: list[dict]):
 
 
 async def add_duels_infos(data: dict):
+    """
+    Adds the information of a duel to the Google Sheets database.
+
+    Parameters
+    ----------
+    data : dict
+        A dictionary containing information about the duel.
+
+    Returns
+    -------
+    None
+    """
     clientg = await connect_gsheet_api()
     spreadsheet = await clientg.open(
         "Guess & Give Summer 2025 - International Duels - Hellias Version"

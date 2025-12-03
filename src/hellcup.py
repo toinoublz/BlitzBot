@@ -1,15 +1,34 @@
 import asyncio
-import json
+import hashlib
 import os
+from typing import Optional
 
 import aiohttp
 import discord
 from dotenv import load_dotenv
 
+from easyDB import DB
 import gspread_utilities as gu
-import hashlib
+import utils
+
+load_dotenv()
 
 def base62(num):
+    """
+    Convert a number to its base62 representation.
+
+    The base62 representation of a number is a string of characters from the set
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz". The representation is computed by
+    repeatedly dividing the number by 62 and taking the remainder as the index of the
+    character in the set. The resulting string is then reversed and any leading zeros are
+    removed.
+
+
+    The result is a string of length 6, padded with leading zeros if necessary.
+
+    :param num: The number to convert.
+    :return: The base62 representation of the number as a string.
+    """
     chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
     res = ''
     while num > 0:
@@ -17,19 +36,32 @@ def base62(num):
         res = chars[i] + res
     return res.zfill(6)  # on force la longueur à 6
 
-def generate_short_id(id_list):
-    concat = ''.join(str(id) for id in id_list)
-    hash_hex = hashlib.sha1(concat.encode()).hexdigest()
-    hash_int = int(hash_hex[:10], 16)  # on prend les 10 premiers hex chars → assez d'entropie
-    return base62(hash_int)[:6]
+def generate_short_id(idList: list):
+    """
+    Generate a short id based on a list of ids.
 
-load_dotenv()
+    The function takes a list of ids, concatenates them into a string, computes the SHA1 hash of the string, takes the first 10 hexadecimal characters of the hash, converts them into an integer, and then converts this integer into a base 62 string of length 6.
+
+    :param id_list: A list of ids to generate the short id from.
+    :return: A short id based on the list of ids as a string of length 6.
+    """
+    concat = ''.join(str(id) for id in idList)
+    hashHex = hashlib.sha1(concat.encode()).hexdigest()
+    hashInt = int(hashHex[:10], 16)  # on prend les 10 premiers hex chars → assez d'entropie
+    return base62(hashInt)[:6]
 
 
-async def get_geoguessr_flag_and_pro(geoguessr_id: str):
+async def get_geoguessr_flag_and_pro(geoguessrId: str):
+    """
+    Get the Geoguessr flag and pro status of a user.
+
+    :param geooguessr_id: The Geoguessr ID of the user.
+    :return: A tuple containing the Geoguessr flag and pro status of the user.
+    :rtype: tuple[str, bool]
+    """
     async with aiohttp.ClientSession() as session:
         async with session.get(
-            f"https://www.geoguessr.com/api/v3/users/{geoguessr_id}"
+            f"https://www.geoguessr.com/api/v3/users/{geoguessrId}"
         ) as response:
             if response.ok:
                 data = await response.json()
@@ -39,7 +71,24 @@ async def get_geoguessr_flag_and_pro(geoguessr_id: str):
 
 
 def flag_to_emoji(flag: str):
-    flag_shortcodes_to_emojis = {
+    """
+    Convert a country flag code to its emoji representation.
+
+    The function takes a country flag code in the format ":flag_<ISO 3166-1 code>" and returns its emoji representation.
+
+    The function uses a dictionary to map flag codes to their emoji representations.
+
+    The dictionary contains the mappings for the flag codes of all countries in the ISO 3166-1 standard.
+
+    The function returns the emoji representation of the given flag code, or None if the flag code is not recognized.
+
+    :param flag: str
+        The country flag code to convert.
+
+    :return: str
+        The emoji representation of the given flag code, or None if the flag code is not recognized.
+    """
+    flagShortcodesToEmojis = {
         ":flag_af:": "🇦🇫",  # Afghanistan
         ":flag_al:": "🇦🇱",  # Albanie
         ":flag_dz:": "🇩🇿",  # Algérie
@@ -232,26 +281,66 @@ def flag_to_emoji(flag: str):
         ":flag_zw:": "🇿🇼",  # Zimbabwe
         ":flag_cn:": "🇨🇳",  # Chine
     }
-    return flag_shortcodes_to_emojis[flag]
+    return flagShortcodesToEmojis[flag]
 
 
-def get_flag(discordId: int) -> str:
-    inscriptionData = json.load(open("inscriptions.json", "r"))
+async def get_flag(discordId: int) -> str:
+    """
+    Get the flag of a player.
+
+    Parameters
+    ----------
+    discordId : int
+        The Discord ID of the player.
+
+    Returns
+    -------
+    str
+        The flag of the player as an emoji string.
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
     return flag_to_emoji(inscriptionData["players"][str(discordId)]["flag"])
 
 
 async def inscription(member: dict):
-    inscriptionData = json.load(open("inscriptions.json", "r"))
+    """
+    Save a new player to the "inscriptions.json" file.
+
+    Parameters
+    ----------
+    member : dict
+        A dictionary containing information about the player.
+
+    Returns
+    -------
+    None
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
     inscriptionData["players"][member["discordId"]] = member
-    json.dump(inscriptionData, open("inscriptions.json", "w"))
+    await utils.write_json("inscriptions.json", inscriptionData)
     try:
         await gu.gspread_new_registration(member)
     except Exception as e:
         print(e)
 
 
-def team_already_exists(member1: discord.Member, member2: discord.Member):
-    inscriptionData = json.load(open("inscriptions.json", "r"))
+async def team_already_exists(member1: discord.Member, member2: discord.Member):
+    """
+    Check if a team with the given members already exists.
+
+    Parameters
+    ----------
+    member1: discord.Member
+        The first member of the team.
+    member2: discord.Member
+        The second member of the team.
+
+    Returns
+    -------
+    bool
+        True if the team already exists, False otherwise.
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
     return (
         f"{member1.id}_{member2.id}" in inscriptionData["teams"]
         or f"{member2.id}_{member1.id}" in inscriptionData["teams"]
@@ -259,27 +348,98 @@ def team_already_exists(member1: discord.Member, member2: discord.Member):
 
 
 async def create_team(member1: discord.Member, member2: discord.Member):
-    inscriptionData = json.load(open("inscriptions.json", "r"))
-    member1 = inscriptionData["players"][str(member1.id)]
-    member2 = inscriptionData["players"][str(member2.id)]
-    inscriptionData["teams"][f"{member1['discordId']}_{member2['discordId']}"] = {
-        "teamName": f"{member1['discordId']}_{member2['discordId']}",
-        "member1": member1,
-        "member2": member2,
+    """
+    Create a new team with the given members.
+
+    Parameters
+    ----------
+    member1 : discord.Member
+        The first member of the team.
+    member2 : discord.Member
+        The second member of the team.
+
+    Returns
+    -------
+    tuple
+        A tuple containing the surnames of the two members.
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
+    member1Data = inscriptionData["players"][str(member1.id)]
+    member2Data = inscriptionData["players"][str(member2.id)]
+    inscriptionData["teams"][f"{member1Data['discordId']}_{member2Data['discordId']}"] = {
+        "teamName": f"{member1Data['discordId']}_{member2Data['discordId']}",
+        "member1": member1Data,
+        "member2": member2Data,
         "score": [],
         "previousOpponents": [],
         "previousDuelIds": [],
         "lastGamemode": None,
     }
-    json.dump(inscriptionData, open("inscriptions.json", "w"))
+    await utils.write_json("inscriptions.json", inscriptionData)
     try:
-        await gu.gspread_new_team([member1, member2])
+        await gu.gspread_new_team([member1Data, member2Data])
     except Exception as e:
         print(e)
-    return member1["surname"], member2["surname"]
+    return member1Data["surname"], member2Data["surname"]
+
+async def refresh_invites_message(guild: discord.Guild, db: DB):
+    """
+    Refreshes the message containing the list of saved invites.
+
+    Parameters
+    ----------
+    guild : discord.Guild
+        The guild where the message is located.
+    db : DB
+        The database containing the information about the invites.
+
+    Notes
+    -----
+    This function is used to refresh the message containing the list of saved invites.
+    It fetches the message, gets the list of invites to check and the list of invites in the guild,
+    and then edits the message with the new list of invites.
+
+    """
+    message = await guild.get_channel(db.get("registration_channel_id")).fetch_message(db.get("invit_message_id"))
+    invitesToCheck = db.get("invit_to_check")
+    guildInvites = await guild.invites()
+    invites = {invite.code: invite.uses for invite in guildInvites if invite.code in invitesToCheck.keys()}
+    content = "Liste des invitations sauvegardées actuelles :\n- "
+    content += "\n- ".join(
+        [
+            f"{invitesToCheck[key]} ({key}) : {value} utilisation{'' if value == 1 else 's'}"
+            for key, value in invites.items()
+        ]
+    )
+    await message.edit(content=content)
 
 
 def get_duel_score(team1: dict, team2: dict, gamemode: str) -> float:
+    """
+    Calculate the score of a duel between two teams.
+
+    The score is based on whether any of the players are pros,
+    whether the flags of the players are different, whether all
+    players are unique, and whether the teams have previously
+    played each other.
+
+    If the teams have previously played each other, the score
+    is decreased by 0.5 times the number of previous games.
+    If the teams have previously played each other in the same
+    gamemode, the score is decreased by an additional 0.01.
+
+    If the teams have previously played each other 5 or more times,
+    the score is decreased by 0.2 times the absolute difference
+    in the average of their previous scores.
+
+    Parameters:
+    team1 (dict): The first team.
+    team2 (dict): The second team.
+    gamemode (str): The gamemode of the duel.
+
+    Returns:
+    float: The score of the duel.
+    """
     allPros = [
         team1["member1"]["isPro"],
         team1["member2"]["isPro"],
@@ -327,52 +487,71 @@ def get_duel_score(team1: dict, team2: dict, gamemode: str) -> float:
     return previousOpponentsScore
 
 
-def watch_for_matches(
+async def watch_for_matches(
     matchmakingData: dict,
 ) -> list[tuple[tuple[str, str], float, str]]:
-    inscriptionData = json.load(open("inscriptions.json", "r"))
-    NMAvailableTeams = matchmakingData["pendingTeams"]["NM"]
-    NMPZAvailableTeams = matchmakingData["pendingTeams"]["NMPZ"]
+    """
+    This function takes a matchmaking data dictionary as an argument and returns a list of tuples.
+    Each tuple contains a pair of team names, a score for the pair, and a gamemode.
+    The function first loads the registration data from the file "inscriptions.json".
+    It then creates lists of available teams for each gamemode.
+    For each available team pair, it calculates the score for the pair using the get_duel_score function.
+    The function then sorts the available team pairs by score in descending order and filters out any pairs with a score of 0.
+    Finally, it returns the list of available team pairs with scores and gamemodes.
 
-    NMAvailableTeamsPairs = [
-        (NMAvailableTeams[i], NMAvailableTeams[j])
-        for i in range(len(NMAvailableTeams))
-        for j in range(i + 1, len(NMAvailableTeams))
+    Parameters
+    ----------
+    matchmakingData: dict
+        A dictionary containing the matchmaking data.
+
+    Returns
+    -------
+    list[tuple[tuple[str, str], float, str]]
+        A list of tuples, each containing a pair of team names, a score for the pair, and a gamemode.
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
+    nmAvailableTeams = matchmakingData["pendingTeams"]["NM"]
+    nmpzAvailableTeams = matchmakingData["pendingTeams"]["NMPZ"]
+
+    nmAvailableTeamsPairs = [
+        (nmAvailableTeams[i], nmAvailableTeams[j])
+        for i in range(len(nmAvailableTeams))
+        for j in range(i + 1, len(nmAvailableTeams))
         if i != j
     ]
-    NMAvailableTeamsPairsScores = [
+    nmAvailableTeamsPairsScores = [
         get_duel_score(
             inscriptionData["teams"][team1], inscriptionData["teams"][team2], "NM 30s"
         )
-        for team1, team2 in NMAvailableTeamsPairs
+        for team1, team2 in nmAvailableTeamsPairs
     ]
-    NMPZAvailableTeamsPairs = [
-        (NMPZAvailableTeams[i], NMPZAvailableTeams[j])
-        for i in range(len(NMPZAvailableTeams))
-        for j in range(i + 1, len(NMPZAvailableTeams))
+    nmpzAvailableTeamsPairs = [
+        (nmpzAvailableTeams[i], nmpzAvailableTeams[j])
+        for i in range(len(nmpzAvailableTeams))
+        for j in range(i + 1, len(nmpzAvailableTeams))
         if i != j
     ]
-    NMPZAvailableTeamsPairsScores = [
+    nmpzAvailableTeamsPairsScores = [
         get_duel_score(
             inscriptionData["teams"][team1], inscriptionData["teams"][team2], "NMPZ 15s"
         )
-        for team1, team2 in NMPZAvailableTeamsPairs
+        for team1, team2 in nmpzAvailableTeamsPairs
     ]
 
-    NMAvailableTeamsPairsScores = sorted(
-        zip(NMAvailableTeamsPairs, NMAvailableTeamsPairsScores),
+    nmAvailableTeamsPairsScores = sorted(
+        zip(nmAvailableTeamsPairs, nmAvailableTeamsPairsScores),
         key=lambda x: x[1],
         reverse=True,
     )
-    NMPZAvailableTeamsPairsScores = sorted(
-        zip(NMPZAvailableTeamsPairs, NMPZAvailableTeamsPairsScores),
+    nmpzAvailableTeamsPairsScores = sorted(
+        zip(nmpzAvailableTeamsPairs, nmpzAvailableTeamsPairsScores),
         key=lambda x: x[1],
         reverse=True,
     )
 
     availableTeamsPairsScores = [
-        (team[0], team[1], "NM 30s") for team in NMAvailableTeamsPairsScores
-    ] + [(team[0], team[1], "NMPZ 15s") for team in NMPZAvailableTeamsPairsScores]
+        (team[0], team[1], "NM 30s") for team in nmAvailableTeamsPairsScores
+    ] + [(team[0], team[1], "NMPZ 15s") for team in nmpzAvailableTeamsPairsScores]
 
     availableTeamsPairsScores = sorted(
         availableTeamsPairsScores, key=lambda x: x[1], reverse=True
@@ -385,8 +564,21 @@ def watch_for_matches(
     return availableTeamsPairsScores
 
 
-def isTeamConnected(members: list[discord.Member]) -> str:
-    inscriptionData = json.load(open("inscriptions.json", "r"))
+async def is_team_connected(members: list[discord.Member]) -> Optional[str]:
+    """
+    Check if all members of a team are connected.
+
+    Parameters
+    ----------
+    members : list[discord.Member]
+        A list of discord members.
+
+    Returns
+    -------
+    str
+        The name of the team if all members are connected, None otherwise.
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
     membersIds = [member.id for member in members]
     for team in inscriptionData["teams"].values():
         if (
@@ -402,6 +594,23 @@ async def create_match(
     matchmakingData: dict,
     channel: discord.VoiceChannel,
 ) -> dict:
+    """
+    Create a match between two teams.
+
+    Parameters
+    ----------
+    match : tuple[tuple[str, str], float, str]
+        A tuple containing the names of the two teams, their score, and the gamemode.
+    matchmakingData : dict
+        A dictionary containing the matchmaking data.
+    channel : discord.VoiceChannel
+        The voice channel of the server.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the updated matchmaking data.
+    """
     teams = match[0]
     matchType = match[2]
     allIds = [
@@ -411,7 +620,9 @@ async def create_match(
         int(teams[1].split("_")[1]),
     ]
     users = [channel.guild.get_member(id) for id in allIds]
-    flags = [get_flag(id) for id in allIds]
+    flags = await asyncio.gather(
+        *[get_flag(id) for id in allIds]
+    )
 
     overwrites = {
         channel.guild.default_role: discord.PermissionOverwrite(view_channel=False)
@@ -419,11 +630,11 @@ async def create_match(
     for user in users:
         overwrites[user] = discord.PermissionOverwrite(view_channel=True)
 
-    short_id = generate_short_id(allIds)
+    shortId = generate_short_id(allIds)
 
-    if not any([short_id in voc.name for voc in channel.category.voice_channels]):
+    if not any(shortId in voc.name for voc in channel.category.voice_channels):
         matchTextChannel = await channel.category.create_text_channel(
-            f"Match-{flags[0]}&{flags[1]}-vs-{flags[2]}&{flags[3]} ({short_id})", overwrites=overwrites
+            f"Match-{flags[0]}&{flags[1]}-vs-{flags[2]}&{flags[3]} ({shortId})", overwrites=overwrites
         )
         await matchTextChannel.send(
             f"{users[0].mention} & {users[1].mention} vs {users[2].mention} & {users[3].mention}\n\nYou can chat here. Here are the rules for your duel :\n- Gamemode : {matchType}\n- Map : {'An Arbitrary World' if matchType == 'NM 30s' else 'An Arbitrary Rural World'}\n- Every player should guess at least once during the duel.\n- 6000hp at start\n- Multiplier 0.5\n- Round without multiplier : 0\n\n**At the end of your duel**\n- Don't forget to send the summary link in <#1384834903245590588>\n- Return to <#1392420336506503248> if you want to play again\n\nGL&HF !"
@@ -465,51 +676,138 @@ async def close_match(
     match: dict, matchmakingData: dict, channel: discord.abc.GuildChannel
 ) -> dict:
 
+    """
+    Close a match by deleting the match text channel and removing the match from matchmakingData.
+
+    Parameters
+    ----------
+    match : dict
+        A dictionary containing the match data.
+    matchmakingData : dict
+        A dictionary containing the matchmaking data.
+    channel : discord.abc.GuildChannel
+        The channel where the match text channel is located.
+
+    Returns
+    -------
+    dict
+        The updated matchmakingData dictionary.
+    """
     try:
         await channel.guild.get_channel(match["matchTextChannelId"]).delete()
-    except:
+    except Exception:
         pass
 
     return matchmakingData
 
 
-def find_match_with_user_id(id: int) -> dict:
-    matchmakingData = json.load(open("matchmaking.json", "r"))
+async def find_match_with_user_id(idTemp: int) -> Optional[dict]:
+    """
+    Find the match that a user is currently in.
+
+    Parameters
+    ----------
+    id : int
+        The user id to find the match for.
+
+    Returns
+    -------
+    dict
+        The match data if the user is in a match, None otherwise.
+    """
+    matchmakingData = await utils.load_json("matchmaking.json")
     for match in matchmakingData["currentMatches"]:
-        if id in match["usersIds"]:
+        if idTemp in match["usersIds"]:
             return match
     return None
 
 
-def player_in_match(id: int) -> int:
-    matchmakingData = json.load(open("matchmaking.json", "r"))
+async def player_in_match(idTemp: int) -> Optional[int]:
+    """
+    Check if a player is currently in a match.
+
+    Parameters
+    ----------
+    id : int
+        The user id to check.
+
+    Returns
+    -------
+    int
+        The match text channel id if the user is in a match, None otherwise.
+    """
+    matchmakingData = await utils.load_json("matchmaking.json")
     for match in matchmakingData["currentMatches"]:
-        if id in match["usersIds"]:
+        if idTemp in match["usersIds"]:
             return match["matchTextChannelId"]
     return None
 
 
-def get_username_from_geoguessr_id(id: str) -> str:
-    inscriptionData = json.load(open("inscriptions.json", "r"))
+async def get_username_from_geoguessr_id(idTemp: str) -> str:
+    """
+    Get the username of a player from their Geoguessr ID.
+
+    Parameters
+    ----------
+    id : str
+        The Geoguessr ID of the player.
+
+    Returns
+    -------
+    str
+        The username of the player.
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
     inscriptionDataWithGeoguessrIdAsKey = {
         player["geoguessrId"]: player for player in inscriptionData["players"].values()
     }
-    return inscriptionDataWithGeoguessrIdAsKey[id]["surname"]
+    return inscriptionDataWithGeoguessrIdAsKey[idTemp]["surname"]
 
 
-def get_country_code_from_geoguessr_id(id: str) -> str:
-    inscriptionData = json.load(open("inscriptions.json", "r"))
+async def get_country_code_from_geoguessr_id(idTemp: str) -> str:
+    """
+    Get the country code of a player from their Geoguessr ID.
+
+    Parameters
+    ----------
+    id : str
+        The Geoguessr ID of the player.
+
+    Returns
+    -------
+    str
+        The country code of the player.
+
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
     inscriptionDataWithGeoguessrIdAsKey = {
         player["geoguessrId"]: player for player in inscriptionData["players"].values()
     }
-    return inscriptionDataWithGeoguessrIdAsKey[id]["flag"].split("_")[1][:-1]
+    return inscriptionDataWithGeoguessrIdAsKey[idTemp]["flag"].split("_")[1][:-1]
 
 
 async def process_duel_link(
-    id: str, match: dict, matchmakingData: dict
+    idTemp: str, match: dict, matchmakingData: dict
 ) -> tuple[str, str]:
 
-    inscriptionData = json.load(open("inscriptions.json", "r"))
+    """
+    Process a duel link and store the duel data in the Google Sheets API.
+
+    Parameters
+    ----------
+    id : str
+        The ID of the duel.
+    match : dict
+        The match data from the matchmaking system.
+    matchmakingData : dict
+        The matchmaking data from the matchmaking system.
+
+    Returns
+    -------
+    tuple[str, str]
+        A tuple containing the winning team and the other team.
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
 
     headers = {
         "Content-Type": "application/json",
@@ -518,14 +816,14 @@ async def process_duel_link(
 
     async with aiohttp.ClientSession() as session:
         async with session.get(
-            f"https://game-server.geoguessr.com/api/duels/{id}", headers=headers
+            f"https://game-server.geoguessr.com/api/duels/{idTemp}", headers=headers
         ) as r:
             js = await r.json()
 
     winningTeamId = js["result"]["winningTeamId"]
 
     duelData = {
-        "link": f"https://www.geoguessr.com/duels/{id}/summary",
+        "link": f"https://www.geoguessr.com/duels/{idTemp}/summary",
         "mapName": js["options"]["map"]["name"],
         "mapLink": f"https://www.geoguessr.com/maps/{js['options']['map']['slug']}",
         "gamemode": (
@@ -546,7 +844,7 @@ async def process_duel_link(
         "numberOfPlayers": sum(len(team["players"]) for team in js["teams"]),
         "allCountries": ",".join(
             [
-                get_country_code_from_geoguessr_id(player["playerId"])
+                await get_country_code_from_geoguessr_id(player["playerId"])
                 for team in js["teams"]
                 for player in team["players"]
             ]
@@ -556,7 +854,7 @@ async def process_duel_link(
         ),
         "WuserNames": ",".join(
             [
-                get_username_from_geoguessr_id(player["playerId"])
+                await get_username_from_geoguessr_id(player["playerId"])
                 for team in js["teams"]
                 for player in team["players"]
                 if team["id"] == winningTeamId
@@ -564,7 +862,7 @@ async def process_duel_link(
         ),
         "Wcountries": ",".join(
             [
-                get_country_code_from_geoguessr_id(player["playerId"])
+                await get_country_code_from_geoguessr_id(player["playerId"])
                 for team in js["teams"]
                 for player in team["players"]
                 if team["id"] == winningTeamId
@@ -575,7 +873,7 @@ async def process_duel_link(
         ),
         "LuserNames": ",".join(
             [
-                get_username_from_geoguessr_id(player["playerId"])
+                await get_username_from_geoguessr_id(player["playerId"])
                 for team in js["teams"]
                 for player in team["players"]
                 if team["id"] != winningTeamId
@@ -583,7 +881,7 @@ async def process_duel_link(
         ),
         "Lcountries": ",".join(
             [
-                get_country_code_from_geoguessr_id(player["playerId"])
+                await get_country_code_from_geoguessr_id(player["playerId"])
                 for team in js["teams"]
                 for player in team["players"]
                 if team["id"] != winningTeamId
@@ -620,15 +918,16 @@ async def process_duel_link(
     return (winningTeam, otherTeam)
 
 
-def reset_insc():
-    inscriptionData = json.load(open("inscriptions.json", "r"))
+async def reset_insc():
+    """
+    Resets the score, previous opponents, previous duel IDs and last gamemode for each team in the "inscriptions.json" file.
+
+    This function is used to reset the data at the end of the tournament.
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
     for name in inscriptionData["teams"].keys():
         inscriptionData["teams"][name]["score"] = []
         inscriptionData["teams"][name]["previousOpponents"] = []
         inscriptionData["teams"][name]["previousDuelIds"] = []
         inscriptionData["teams"][name]["lastGamemode"] = None
-    json.dump(inscriptionData, open("inscriptions.json", "w"))
-
-
-if __name__ == "__main__":
-    reset_insc()
+    await utils.write_json("inscriptions.json", inscriptionData)

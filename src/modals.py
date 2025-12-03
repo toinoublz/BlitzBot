@@ -4,10 +4,10 @@ from datetime import datetime
 import discord
 from discord import ui
 
-import DB
+from easyDB import DB
 import hellcup as hc
 
-db = DB.DB("hellbot_gg")
+db = DB("hellbot_gg")
 
 
 class RegisterModal(ui.Modal):
