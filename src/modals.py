@@ -1,4 +1,3 @@
-import traceback
 from datetime import datetime
 
 import discord
@@ -60,7 +59,7 @@ class RegisterModal(ui.Modal):
                     await interaction.user.edit(
                         nick=f"{flag} {interaction.user.display_name}"
                     )
-            except:
+            except Exception:
                 pass
             await interaction.user.add_roles(
                 interaction.guild.get_role(db.get("registered_role_id"))

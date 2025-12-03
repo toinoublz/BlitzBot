@@ -7,11 +7,16 @@ import aiohttp
 import discord
 from dotenv import load_dotenv
 
+from bot import team
 from easyDB import DB
 import gspread_utilities as gu
 import utils
 
 load_dotenv()
+
+class MatchMakingButton(discord.ui.Button):
+    def __init__(self, custom_id: str):
+        super().__init__(custom_id=custom_id, emoji="🎮", style=discord.ButtonStyle.green)
 
 def base62(num):
     """
@@ -366,6 +371,16 @@ async def create_team(member1: discord.Member, member2: discord.Member):
     inscriptionData = await utils.load_json("inscriptions.json")
     member1Data = inscriptionData["players"][str(member1.id)]
     member2Data = inscriptionData["players"][str(member2.id)]
+
+    for channel in member1.guild.channels:
+        if isinstance(channel, discord.CategoryChannel) and "TEAM TEXTS CHANNELS" in channel.name and len(channel.text_channels) < 50:
+            teamTextsChannelCategory = channel
+            break
+    else:
+        teamTextsChannelCategory = await member1.guild.create_category_channel("TEAM TEXTS CHANNELS")
+
+    teamTextChannel = await teamTextsChannelCategory.create_text_channel(f"{member1Data['surname']}_{member2Data['surname']}")
+
     inscriptionData["teams"][f"{member1Data['discordId']}_{member2Data['discordId']}"] = {
         "teamName": f"{member1Data['discordId']}_{member2Data['discordId']}",
         "member1": member1Data,
@@ -374,8 +389,16 @@ async def create_team(member1: discord.Member, member2: discord.Member):
         "previousOpponents": [],
         "previousDuelIds": [],
         "lastGamemode": None,
+        "teamTextChannelId": teamTextChannel.id
     }
     await utils.write_json("inscriptions.json", inscriptionData)
+
+    view = discord.ui.View()
+    view.add_item(MatchMakingButton(f"is_team_ready_{member1Data['discordId']}_{member2Data['discordId']}"))
+
+    teamWelcomeMessage = await teamTextChannel.send("Welcome here ! This is your team text channel.\n\nWhenever you are ready to play, click on the button below to search for a match!\n\nIf ever you want to stop searching for a match, click again.\n\nYou'll receive messages from your opponents directly in this channel to communicate during a match.", view=view)
+    await teamWelcomeMessage.pin()
+
     try:
         await gu.gspread_new_team([member1Data, member2Data])
     except Exception as e:
@@ -592,7 +615,8 @@ async def is_team_connected(members: list[discord.Member]) -> Optional[str]:
 async def create_match(
     match: tuple[tuple[str, str], float, str],
     matchmakingData: dict,
-    channel: discord.VoiceChannel,
+    allIds: list[int],
+    guild: discord.Guild,
 ) -> dict:
     """
     Create a match between two teams.
@@ -613,61 +637,35 @@ async def create_match(
     """
     teams = match[0]
     matchType = match[2]
-    allIds = [
-        int(teams[0].split("_")[0]),
-        int(teams[0].split("_")[1]),
-        int(teams[1].split("_")[0]),
-        int(teams[1].split("_")[1]),
-    ]
-    users = [channel.guild.get_member(id) for id in allIds]
-    flags = await asyncio.gather(
-        *[get_flag(id) for id in allIds]
-    )
 
-    overwrites = {
-        channel.guild.default_role: discord.PermissionOverwrite(view_channel=False)
+    matchData = {
+        "teams": teams,
+        "team1": teams[0],
+        "team2": teams[1],
+        "usersIds": allIds,
+        "matchType": matchType,
     }
-    for user in users:
-        overwrites[user] = discord.PermissionOverwrite(view_channel=True)
 
-    shortId = generate_short_id(allIds)
+    inscriptionData = await utils.load_json("inscriptions.json")
+    team1Names = inscriptionData["teams"][teams[0]]["member1"]["surname"], inscriptionData["teams"][teams[0]]["member2"]["surname"]
+    team2Names = inscriptionData["teams"][teams[1]]["member1"]["surname"], inscriptionData["teams"][teams[1]]["member2"]["surname"]
 
-    if not any(shortId in voc.name for voc in channel.category.voice_channels):
-        matchTextChannel = await channel.category.create_text_channel(
-            f"Match-{flags[0]}&{flags[1]}-vs-{flags[2]}&{flags[3]} ({shortId})", overwrites=overwrites
-        )
-        await matchTextChannel.send(
-            f"{users[0].mention} & {users[1].mention} vs {users[2].mention} & {users[3].mention}\n\nYou can chat here. Here are the rules for your duel :\n- Gamemode : {matchType}\n- Map : {'An Arbitrary World' if matchType == 'NM 30s' else 'An Arbitrary Rural World'}\n- Every player should guess at least once during the duel.\n- 6000hp at start\n- Multiplier 0.5\n- Round without multiplier : 0\n\n**At the end of your duel**\n- Don't forget to send the summary link in <#1384834903245590588>\n- Return to <#1392420336506503248> if you want to play again\n\nGL&HF !"
-        )
+    team1TextChannelId = inscriptionData["teams"][teams[0]]["teamTextChannelId"]
+    team2TextChannelId = inscriptionData["teams"][teams[1]]["teamTextChannelId"]
 
-        teamsVocsIds = []
+    await guild.get_channel(team1TextChannelId).send("New match found, you are playing against team " + team2Names[0] + " & " + team2Names[1])
+    await guild.get_channel(team2TextChannelId).send("New match found, you are playing against team " + team1Names[0] + " & " + team1Names[1])
 
-        for voc in channel.category.voice_channels:
-            if teams[0] in voc.name and "Team Ready - " in voc.name:
-                await voc.edit(name=f"Pending Match - {teams[0]}")
-                teamsVocsIds.append(voc.id)
-            elif teams[1] in voc.name and "Team Ready - " in voc.name:
-                await voc.edit(name=f"Pending Match - {teams[1]}")
-                teamsVocsIds.append(voc.id)
+    if teams[0] in matchmakingData["pendingTeams"]["NM"]:
+        matchmakingData["pendingTeams"]["NM"].remove(teams[0])
+    if teams[0] in matchmakingData["pendingTeams"]["NMPZ"]:
+        matchmakingData["pendingTeams"]["NMPZ"].remove(teams[0])
+    if teams[1] in matchmakingData["pendingTeams"]["NM"]:
+        matchmakingData["pendingTeams"]["NM"].remove(teams[1])
+    if teams[1] in matchmakingData["pendingTeams"]["NMPZ"]:
+        matchmakingData["pendingTeams"]["NMPZ"].remove(teams[1])
 
-        matchData = {
-            "teams": teams,
-            "usersIds": allIds,
-            "matchType": matchType,
-            "matchTextChannelId": matchTextChannel.id,
-            "teamsVocsIds": teamsVocsIds,
-        }
-
-        if teams[0] in matchmakingData["pendingTeams"]["NM"]:
-            matchmakingData["pendingTeams"]["NM"].remove(teams[0])
-        if teams[0] in matchmakingData["pendingTeams"]["NMPZ"]:
-            matchmakingData["pendingTeams"]["NMPZ"].remove(teams[0])
-        if teams[1] in matchmakingData["pendingTeams"]["NM"]:
-            matchmakingData["pendingTeams"]["NM"].remove(teams[1])
-        if teams[1] in matchmakingData["pendingTeams"]["NMPZ"]:
-            matchmakingData["pendingTeams"]["NMPZ"].remove(teams[1])
-
-        matchmakingData["currentMatches"].append(matchData)
+    matchmakingData["currentMatches"].append(matchData)
 
     return matchmakingData
 
