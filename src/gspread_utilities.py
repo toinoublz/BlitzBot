@@ -107,7 +107,7 @@ async def add_duels_infos(data: dict):
     """
     clientg = await connect_gsheet_api()
     spreadsheet = await clientg.open(
-        "Guess & Give Summer 2025 - International Duels - Hellias Version"
+        "Guess & Give Winter 2025 - International Duels - Hellias Version"
     )
     worksheet = await spreadsheet.worksheet("raw_data")
     await worksheet.append_row(

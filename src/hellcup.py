@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import os
 from typing import Optional
@@ -7,7 +6,6 @@ import aiohttp
 import discord
 from dotenv import load_dotenv
 
-from bot import team
 from easyDB import DB
 import gspread_utilities as gu
 import utils
@@ -603,12 +601,12 @@ async def is_team_connected(members: list[discord.Member]) -> Optional[str]:
     """
     inscriptionData = await utils.load_json("inscriptions.json")
     membersIds = [member.id for member in members]
-    for team in inscriptionData["teams"].values():
+    for teamTemp in inscriptionData["teams"].values():
         if (
-            int(team["member1"]["discordId"]) in membersIds
-            and int(team["member2"]["discordId"]) in membersIds
+            int(teamTemp["member1"]["discordId"]) in membersIds
+            and int(teamTemp["member2"]["discordId"]) in membersIds
         ):
-            return team["teamName"]
+            return teamTemp["teamName"]
     return None
 
 
