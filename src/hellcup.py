@@ -1,5 +1,6 @@
 import hashlib
 import os
+import traceback
 from typing import Optional
 
 import aiohttp
@@ -320,11 +321,11 @@ async def inscription(member: dict):
     """
     inscriptionData = await utils.load_json("inscriptions.json")
     inscriptionData["players"][member["discordId"]] = member
-    await utils.write_json("inscriptions.json", inscriptionData)
+    await utils.write_json(inscriptionData, "inscriptions.json")
     try:
         await gu.gspread_new_registration(member)
     except Exception as e:
-        print(e)
+        traceback.print_exc()
 
 
 async def team_already_exists(member1: discord.Member, member2: discord.Member):
@@ -389,7 +390,7 @@ async def create_team(member1: discord.Member, member2: discord.Member):
         "lastGamemode": None,
         "teamTextChannelId": teamTextChannel.id
     }
-    await utils.write_json("inscriptions.json", inscriptionData)
+    await utils.write_json(inscriptionData, "inscriptions.json")
 
     view = discord.ui.View()
     view.add_item(MatchMakingButton(f"is_team_ready_{member1Data['discordId']}_{member2Data['discordId']}"))
@@ -400,7 +401,7 @@ async def create_team(member1: discord.Member, member2: discord.Member):
     try:
         await gu.gspread_new_team([member1Data, member2Data])
     except Exception as e:
-        print(e)
+        traceback.print_exc()
     return member1Data["surname"], member2Data["surname"]
 
 async def refresh_invites_message(guild: discord.Guild, db: DB):
@@ -926,4 +927,4 @@ async def reset_insc():
         inscriptionData["teams"][name]["previousOpponents"] = []
         inscriptionData["teams"][name]["previousDuelIds"] = []
         inscriptionData["teams"][name]["lastGamemode"] = None
-    await utils.write_json("inscriptions.json", inscriptionData)
+    await utils.write_json(inscriptionData, "inscriptions.json")
