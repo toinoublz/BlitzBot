@@ -846,9 +846,15 @@ async def on_message(message: discord.Message):
         v:k for k, v in teamNamesFromTeamTextChannelsIds.items()
     }
 
+
     if message.channel.id in teamNamesFromTeamTextChannelsIds:
         teamName = teamNamesFromTeamTextChannelsIds[message.channel.id]
-        match = await hc.find_match_with_user_id(teamName.split('_')[0])
+        match = await hc.find_match_with_user_id(int(teamName.split('_')[0]))
+        if message.content == "$UMM":
+            async for messageTemp in message.channel.history(limit=1, oldest_first=True):
+                view = discord.ui.View().from_message(messageTemp)
+                view.children[0].disabled = False
+                await messageTemp.edit(view=view)
         if match:
             opponentTeamName = match[0][1] if teamName == match[0][0] else match[0][0]
             opponentTextChannelId = teamTextChannelIdFromTeamName[opponentTeamName]
