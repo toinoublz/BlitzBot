@@ -693,7 +693,6 @@ async def on_interaction(interaction: discord.Interaction):
                 nmRole = interaction.guild.get_role(db.get("NM_role_id"))
                 nmpzRole = interaction.guild.get_role(db.get("NMPZ_role_id"))
                 check = False
-
                 if nmRole in member1.roles and nmRole in member2.roles:
                     matchmakingData["pendingTeams"]["NM"].append(teamName)
                     await matchmaking_logs(f"**{teamName}** added to NM queue")
@@ -856,9 +855,9 @@ async def on_message(message: discord.Message):
                 view.children[0].disabled = False
                 await messageTemp.edit(view=view)
         if match:
-            opponentTeamName = match[0][1] if teamName == match[0][0] else match[0][0]
+            opponentTeamName = match["team1"] if teamName == match["team2"] else match["team2"]
             opponentTextChannelId = teamTextChannelIdFromTeamName[opponentTeamName]
-            await message.guild.get_channel(opponentTextChannelId).send(f"[{message.author.name}] {message.content}")
+            await message.guild.get_channel(opponentTextChannelId).send(f"[{message.author.mention}] {message.content}")
 
     if message.author.guild_permissions.administrator:
 

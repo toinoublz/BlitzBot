@@ -653,14 +653,12 @@ async def create_match(
     }
 
     inscriptionData = await utils.load_json("inscriptions.json")
-    team1Names = inscriptionData["teams"][teams[0]]["member1"]["surname"], inscriptionData["teams"][teams[0]]["member2"]["surname"]
-    team2Names = inscriptionData["teams"][teams[1]]["member1"]["surname"], inscriptionData["teams"][teams[1]]["member2"]["surname"]
 
     team1TextChannelId = inscriptionData["teams"][teams[0]]["teamTextChannelId"]
     team2TextChannelId = inscriptionData["teams"][teams[1]]["teamTextChannelId"]
 
-    await guild.get_channel(team1TextChannelId).send("New match found, you are playing against team " + team2Names[0] + " & " + team2Names[1])
-    await guild.get_channel(team2TextChannelId).send("New match found, you are playing against team " + team1Names[0] + " & " + team1Names[1])
+    await guild.get_channel(team1TextChannelId).send("New match found, you are playing against team <@" + teams[1].split("_")[0] + "> & <@" + teams[1].split("_")[1] + ">. Your match is in " + matchType + ".")
+    await guild.get_channel(team2TextChannelId).send("New match found, you are playing against team <@" + teams[0].split("_")[0] + "> & <@" + teams[0].split("_")[1] + ">. Your match is in " + matchType + ".")
 
     if teams[0] in matchmakingData["pendingTeams"]["NM"]:
         matchmakingData["pendingTeams"]["NM"].remove(teams[0])
@@ -721,7 +719,7 @@ async def find_match_with_user_id(idTemp: int) -> Optional[dict]:
     """
     matchmakingData = await utils.load_json("matchmaking.json")
     for match in matchmakingData["currentMatches"]:
-        if idTemp in match["usersIds"]:
+        if str(idTemp) in match["usersIds"]:
             return match
     return None
 
