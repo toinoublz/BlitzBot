@@ -37,7 +37,6 @@ class RegisterModal(ui.Modal):
         geoguessrLink = interaction.data["components"][1]["components"][0]["value"]
 
         try:
-            print(surname, geoguessrLink)
             member = {
                 "discordId": str(interaction.user.id),
                 "surname": surname,

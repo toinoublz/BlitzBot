@@ -15,7 +15,7 @@ load_dotenv()
 
 class MatchMakingButton(discord.ui.Button):
     def __init__(self, custom_id: str):
-        super().__init__(custom_id=custom_id, emoji="🎮 Find a Match 🎮", style=discord.ButtonStyle.green, disabled=True)
+        super().__init__(custom_id=custom_id, label="🎮 Find a Match 🎮", style=discord.ButtonStyle.green, disabled=True)
 
 def base62(num):
     """
@@ -378,7 +378,14 @@ async def create_team(member1: discord.Member, member2: discord.Member):
     else:
         teamTextsChannelCategory = await member1.guild.create_category_channel("TEAM TEXTS CHANNELS")
 
-    teamTextChannel = await teamTextsChannelCategory.create_text_channel(f"{member1Data['surname']}_{member2Data['surname']}")
+    overwrites = {
+        member1.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        member1: discord.PermissionOverwrite(view_channel=True),
+        member2: discord.PermissionOverwrite(view_channel=True),
+    }
+
+    teamTextChannel = await teamTextsChannelCategory.create_text_channel(f"{member1Data['surname']}_{member2Data['surname']}", overwrites=overwrites)
+
 
     inscriptionData["teams"][f"{member1Data['discordId']}_{member2Data['discordId']}"] = {
         "teamName": f"{member1Data['discordId']}_{member2Data['discordId']}",
