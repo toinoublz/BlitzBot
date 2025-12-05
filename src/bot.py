@@ -184,10 +184,10 @@ async def log_message(message: str):
 
 
 @bot.event
-async def on_error(event):
+async def on_error(event, *args, **kwargs):
     """Capture les erreurs d'événements"""
     error = traceback.format_exc()
-    await log_error(Exception(f"Erreur dans l'événement {event}:\n{error}"))
+    await log_error(Exception(f"Erreur dans l'événement {event}:\n{error}, args: {args}, kwargs: {kwargs}"))
 
 
 @bot.event
@@ -605,7 +605,7 @@ async def on_interaction(interaction: discord.Interaction):
                     ephemeral=True,
                 )
             else:
-                await interaction.response.defer()
+                await interaction.response.defer(ephemeral=True)
                 if await hc.team_already_exists(interaction.user, userMentionned):
                     await interaction.followup.send(
                         f":x: You are already in a team with {userMentionned.mention} !",
