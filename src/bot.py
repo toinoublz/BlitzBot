@@ -677,10 +677,10 @@ async def on_interaction(interaction: discord.Interaction):
             teamName = interaction.data["custom_id"].split("_", 3)[-1]
             tempView = discord.ui.View().from_message(interaction.message)
             button = tempView.children[0]
-            if button.label == "🎮":
+            if button.label == "🎮 Find a Match 🎮":
 
                 button.style = discord.ButtonStyle.red
-                button.label = "Waiting..."
+                button.label = "⏳ Waiting... ⏳"
                 await interaction.message.edit(view=tempView)
 
                 await matchmaking_logs(
@@ -745,7 +745,7 @@ async def on_interaction(interaction: discord.Interaction):
                         await bot.wait_for(
                             "on_interaction",
                             check=lambda interaction_: interaction_.data.get("custom_id", "").startswith("is_team_ready")
-                            and discord.ui.View().from_message(interaction.message).children[0].label == "🎮",
+                            and discord.ui.View().from_message(interaction.message).children[0].label == "🎮 Find a Match 🎮",
                             timeout=timeout,
                         )
 
@@ -776,7 +776,7 @@ async def on_interaction(interaction: discord.Interaction):
             else:
 
                 button.style = discord.ButtonStyle.green
-                button.label = "🎮"
+                button.label = "🎮 Find a Match 🎮"
                 await interaction.message.edit(view=tempView)
                 await matchmaking_logs(
                     f"**{teamName}** not ready anymore for matchmaking"

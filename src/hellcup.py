@@ -15,7 +15,7 @@ load_dotenv()
 
 class MatchMakingButton(discord.ui.Button):
     def __init__(self, custom_id: str):
-        super().__init__(custom_id=custom_id, emoji="🎮", style=discord.ButtonStyle.green)
+        super().__init__(custom_id=custom_id, emoji="🎮 Find a Match 🎮", style=discord.ButtonStyle.green, disabled=True)
 
 def base62(num):
     """
@@ -324,7 +324,7 @@ async def inscription(member: dict):
     await utils.write_json(inscriptionData, "inscriptions.json")
     try:
         await gu.gspread_new_registration(member)
-    except Exception as e:
+    except Exception :
         traceback.print_exc()
 
 
@@ -400,7 +400,7 @@ async def create_team(member1: discord.Member, member2: discord.Member):
 
     try:
         await gu.gspread_new_team([member1Data, member2Data])
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
     return member1Data["surname"], member2Data["surname"]
 
