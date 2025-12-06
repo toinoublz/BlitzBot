@@ -9,8 +9,8 @@ from zoneinfo import ZoneInfo
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
-
 from easyDB import DB
+
 import hellcup as hc
 import modals as md
 import utils
@@ -142,9 +142,7 @@ async def log_error(error: Exception, ctx=None):
 
     embed.add_field(name="Type d'erreur", value=type(error).__name__, inline=False)
     # embed.add_field(name="Message d'erreur", value=str(error), inline=False)
-    errorDetails = (
-        errorDetails[-1000:] if len(errorDetails) > 1000 else errorDetails
-    )
+    errorDetails = errorDetails[-1000:] if len(errorDetails) > 1000 else errorDetails
     embed.add_field(
         name="Traceback", value=f"```python\n{errorDetails}```", inline=False
     )
@@ -187,7 +185,11 @@ async def log_message(message: str):
 async def on_error(event, *args, **kwargs):
     """Capture les erreurs d'événements"""
     error = traceback.format_exc()
-    await log_error(Exception(f"Erreur dans l'événement {event}:\n{error}, args: {args}, kwargs: {kwargs}"))
+    await log_error(
+        Exception(
+            f"Erreur dans l'événement {event}:\n{error}, args: {args}, kwargs: {kwargs}"
+        )
+    )
 
 
 @bot.event
@@ -679,13 +681,11 @@ async def on_interaction(interaction: discord.Interaction):
             button = tempView.children[0]
             if button.label == "🎮 Find a Match 🎮":
 
-                button.style = discord.ButtonStyle.red
-                button.label = "⏳ Waiting... ⏳"
-                await interaction.message.edit(view=tempView)
-
-                await matchmaking_logs(
-                    f"**{teamName}** is ready for matchmaking"
+                await hc.update_button(
+                    interaction.guild, teamName, hc.ButtonType.WAITING
                 )
+
+                await matchmaking_logs(f"**{teamName}** is ready for matchmaking")
 
                 matchmakingData = await utils.load_json("matchmaking.json")
                 member1 = interaction.guild.get_member(int(teamName.split("_")[0]))
@@ -707,17 +707,23 @@ async def on_interaction(interaction: discord.Interaction):
                     await matchmaking_logs(
                         f"**{teamName}** not added to queue because neither both players are NM nor NMPZ"
                     )
+
+                    await hc.update_button(
+                        interaction.guild, teamName, hc.ButtonType.READY
+                    )
+
                     try:
                         await member1.send(
-                            "Hello, you and your mate need to be both registered as NM or NMPZ players to join the queue in the sign-up channel."
+                            "Hello, you and your mate need to be both registered as NM or NMPZ players to join the queue in the sign-up channel. Fix the issue and then try again !"
                         )
                     except Exception:
                         pass
 
                     try:
                         await member2.send(
-                            "Hello, you and your mate need to be both registered as NM or NMPZ players to join the queue in the sign-up channel."
+                            "Hello, you and your mate need to be both registered as NM or NMPZ players to join the queue in the sign-up channel. Fix the issue and then try again !"
                         )
+
                     except Exception:
                         pass
                     return
@@ -743,40 +749,54 @@ async def on_interaction(interaction: discord.Interaction):
                             raise asyncio.TimeoutError
                         await bot.wait_for(
                             "on_interaction",
-                            check=lambda interaction_: interaction_.data.get("custom_id", "").startswith("is_team_ready")
-                            and discord.ui.View().from_message(interaction.message).children[0].label == "🎮 Find a Match 🎮",
+                            check=lambda interaction_: interaction_.data.get(
+                                "custom_id", ""
+                            ).startswith("is_team_ready")
+                            and discord.ui.View()
+                            .from_message(interaction.message)
+                            .children[0]
+                            .label
+                            == "🎮 Find a Match 🎮",
                             timeout=timeout,
                         )
 
                     except asyncio.TimeoutError:
                         match = availableTeamsPairsScores.pop(0)
-                        await matchmaking_logs(f"User in match: {len(user_in_match)} {user_in_match}")
+                        await matchmaking_logs(
+                            f"User in match: {len(user_in_match)} {user_in_match}"
+                        )
                         allIds = [
-                            match[0][0].split('_')[0],
-                            match[0][0].split('_')[1],
-                            match[0][1].split('_')[0],
-                            match[0][1].split('_')[1],
+                            match[0][0].split("_")[0],
+                            match[0][0].split("_")[1],
+                            match[0][1].split("_")[0],
+                            match[0][1].split("_")[1],
                         ]
                         if not any(id in user_in_match for id in allIds):
                             await matchmaking_logs(
                                 f"No better match found, launching a match between {match[0][0]} and {match[0][1]}"
                             )
-                            user_in_match.extend([match[0][0].split('_')[0],match[0][0].split('_')[1],match[0][1].split('_')[0],match[0][1].split('_')[1],])
+                            user_in_match.extend(
+                                [
+                                    match[0][0].split("_")[0],
+                                    match[0][0].split("_")[1],
+                                    match[0][1].split("_")[0],
+                                    match[0][1].split("_")[1],
+                                ]
+                            )
                             matchmakingData = await hc.create_match(
                                 match, matchmakingData, allIds, interaction.guild
                             )
 
-                        availableTeamsPairsScores = await hc.watch_for_matches(matchmakingData)
+                        availableTeamsPairsScores = await hc.watch_for_matches(
+                            matchmakingData
+                        )
 
                     await utils.write_json(matchmakingData, "matchmaking.json")
 
                 await matchmaking_logs("No more match available")
 
             else:
-
-                button.style = discord.ButtonStyle.green
-                button.label = "🎮 Find a Match 🎮"
-                await interaction.message.edit(view=tempView)
+                await hc.update_button(interaction.guild, teamName, hc.ButtonType.READY)
                 await matchmaking_logs(
                     f"**{teamName}** not ready anymore for matchmaking"
                 )
@@ -837,27 +857,33 @@ async def on_message(message: discord.Message):
     # Continuer le traitement des autres commandes
     await bot.process_commands(message)
 
-
     inscriptionData = await utils.load_json("inscriptions.json")
     teamNamesFromTeamTextChannelsIds = {
-        teamData["teamTextChannelId"]:teamName for teamName, teamData in inscriptionData["teams"].items()}
-    teamTextChannelIdFromTeamName = {
-        v:k for k, v in teamNamesFromTeamTextChannelsIds.items()
+        teamData["teamTextChannelId"]: teamName
+        for teamName, teamData in inscriptionData["teams"].items()
     }
-
+    teamTextChannelIdFromTeamName = {
+        v: k for k, v in teamNamesFromTeamTextChannelsIds.items()
+    }
 
     if message.channel.id in teamNamesFromTeamTextChannelsIds:
         teamName = teamNamesFromTeamTextChannelsIds[message.channel.id]
-        match = await hc.find_match_with_user_id(int(teamName.split('_')[0]))
+        match = await hc.find_match_with_user_id(int(teamName.split("_")[0]))
         if message.content == "$UMM":
-            async for messageTemp in message.channel.history(limit=1, oldest_first=True):
+            async for messageTemp in message.channel.history(
+                limit=1, oldest_first=True
+            ):
                 view = discord.ui.View().from_message(messageTemp)
                 view.children[0].disabled = False
                 await messageTemp.edit(view=view)
         if match:
-            opponentTeamName = match["team1"] if teamName == match["team2"] else match["team2"]
+            opponentTeamName = (
+                match["team1"] if teamName == match["team2"] else match["team2"]
+            )
             opponentTextChannelId = teamTextChannelIdFromTeamName[opponentTeamName]
-            await message.guild.get_channel(opponentTextChannelId).send(f"[{message.author.mention}] {message.content}")
+            await message.guild.get_channel(opponentTextChannelId).send(
+                f"[{message.author.mention}] {message.content}"
+            )
 
     if message.author.guild_permissions.administrator:
 
@@ -978,6 +1004,7 @@ async def on_message(message: discord.Message):
         )
         if match:
             inscriptionData = await utils.load_json("inscriptions.json")
+            await hc.close_match(match, message.guild)
             if duelId not in inscriptionData["teams"][winningTeam]["previousDuelIds"]:
                 inscriptionData["teams"][winningTeam]["score"].append("1")
                 inscriptionData["teams"][winningTeam]["previousOpponents"].append(

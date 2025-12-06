@@ -1,10 +1,10 @@
-from datetime import datetime
 import traceback
+from datetime import datetime
 
 import discord
 from discord import ui
-
 from easyDB import DB
+
 import hellcup as hc
 
 db = DB("hellbot_gg")
@@ -92,8 +92,8 @@ class RegisterModal(ui.Modal):
                     value=datetime.now().strftime("%d/%m/%Y à %H:%M"),
                     inline=True,
                 )
-                await interaction.guild.get_channel(db.get("registration_channel_id")).send(
-                    embed=embed
-                )
+                await interaction.guild.get_channel(
+                    db.get("registration_channel_id")
+                ).send(embed=embed)
         except Exception:
             traceback.print_exc()

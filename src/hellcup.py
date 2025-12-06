@@ -1,21 +1,81 @@
+import enum
 import hashlib
 import os
+import time
 import traceback
+from datetime import datetime
 from typing import Optional
 
 import aiohttp
 import discord
 from dotenv import load_dotenv
-
 from easyDB import DB
+
 import gspread_utilities as gu
 import utils
 
 load_dotenv()
 
+
+class ButtonType(enum.Enum):
+    READY = 1
+    WAITING = 2
+    PLAYING = 3
+
+
 class MatchMakingButton(discord.ui.Button):
     def __init__(self, custom_id: str):
-        super().__init__(custom_id=custom_id, label="🎮 Find a Match 🎮", style=discord.ButtonStyle.green, disabled=True)
+        super().__init__(
+            custom_id=custom_id,
+            label="🎮 Find a Match 🎮",
+            style=discord.ButtonStyle.green,
+            disabled=True,
+        )
+
+
+async def find_channel_id_for_team(teamName: str) -> int:
+    inscriptionData = await utils.load_json("inscriptions.json")
+    teamTextChannelIdFromTeamName = {
+        teamName: teamData["teamTextChannelId"]
+        for teamName, teamData in inscriptionData["teams"].items()
+    }
+    return teamTextChannelIdFromTeamName[teamName]
+
+
+async def update_button(guild: discord.Guild, teamName: str, buttonType: ButtonType):
+    """
+    Update the match making button in a team's text channel based on its state.
+
+    Parameters
+    ----------
+    guild : discord.Guild
+        The guild where the team's text channel is located.
+    teamName : str
+        The name of the team.
+    buttonType : ButtonType
+        The state of the button.
+    """
+
+    channel = guild.get_channel(await find_channel_id_for_team(teamName))
+    if channel is None:
+        return
+    firstMessage = [m async for m in channel.history(limit=1, oldest_first=True)][0]
+    view = discord.ui.View().from_message(firstMessage)
+    button = view.children[0]
+    if buttonType == ButtonType.READY:
+        button.disabled = False
+        button.label = "🎮 Find a Match 🎮"
+        button.style = discord.ButtonStyle.green
+    elif buttonType == ButtonType.WAITING:
+        button.disabled = False
+        button.label = "⏳ Waiting for a Match ⏳"
+        button.style = discord.ButtonStyle.gray
+    elif buttonType == ButtonType.PLAYING:
+        button.disabled = True
+        button.label = "⚔️ In a Match ⚔️"
+        button.style = discord.ButtonStyle.gray
+    await firstMessage.edit(view=view)
+
 
 def base62(num):
     """
@@ -34,11 +94,12 @@ def base62(num):
     :return: The base62 representation of the number as a string.
     """
     chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-    res = ''
+    res = ""
     while num > 0:
         num, i = divmod(num, 62)
         res = chars[i] + res
     return res.zfill(6)  # on force la longueur à 6
+
 
 def generate_short_id(idList: list):
     """
@@ -49,9 +110,11 @@ def generate_short_id(idList: list):
     :param id_list: A list of ids to generate the short id from.
     :return: A short id based on the list of ids as a string of length 6.
     """
-    concat = ''.join(str(id) for id in idList)
+    concat = "".join(str(id) for id in idList)
     hashHex = hashlib.sha1(concat.encode()).hexdigest()
-    hashInt = int(hashHex[:10], 16)  # on prend les 10 premiers hex chars → assez d'entropie
+    hashInt = int(
+        hashHex[:10], 16
+    )  # on prend les 10 premiers hex chars → assez d'entropie
     return base62(hashInt)[:6]
 
 
@@ -324,7 +387,7 @@ async def inscription(member: dict):
     await utils.write_json(inscriptionData, "inscriptions.json")
     try:
         await gu.gspread_new_registration(member)
-    except Exception :
+    except Exception:
         traceback.print_exc()
 
 
@@ -372,11 +435,17 @@ async def create_team(member1: discord.Member, member2: discord.Member):
     member2Data = inscriptionData["players"][str(member2.id)]
 
     for channel in member1.guild.channels:
-        if isinstance(channel, discord.CategoryChannel) and "TEAM TEXTS CHANNELS" in channel.name and len(channel.text_channels) < 50:
+        if (
+            isinstance(channel, discord.CategoryChannel)
+            and "TEAM TEXTS CHANNELS" in channel.name
+            and len(channel.text_channels) < 50
+        ):
             teamTextsChannelCategory = channel
             break
     else:
-        teamTextsChannelCategory = await member1.guild.create_category_channel("TEAM TEXTS CHANNELS")
+        teamTextsChannelCategory = await member1.guild.create_category_channel(
+            "TEAM TEXTS CHANNELS"
+        )
 
     overwrites = {
         member1.guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -384,10 +453,13 @@ async def create_team(member1: discord.Member, member2: discord.Member):
         member2: discord.PermissionOverwrite(view_channel=True),
     }
 
-    teamTextChannel = await teamTextsChannelCategory.create_text_channel(f"{member1Data['surname']}_{member2Data['surname']}", overwrites=overwrites)
+    teamTextChannel = await teamTextsChannelCategory.create_text_channel(
+        f"{member1Data['surname']}_{member2Data['surname']}", overwrites=overwrites
+    )
 
-
-    inscriptionData["teams"][f"{member1Data['discordId']}_{member2Data['discordId']}"] = {
+    inscriptionData["teams"][
+        f"{member1Data['discordId']}_{member2Data['discordId']}"
+    ] = {
         "teamName": f"{member1Data['discordId']}_{member2Data['discordId']}",
         "member1": member1Data,
         "member2": member2Data,
@@ -395,14 +467,21 @@ async def create_team(member1: discord.Member, member2: discord.Member):
         "previousOpponents": [],
         "previousDuelIds": [],
         "lastGamemode": None,
-        "teamTextChannelId": teamTextChannel.id
+        "teamTextChannelId": teamTextChannel.id,
     }
     await utils.write_json(inscriptionData, "inscriptions.json")
 
     view = discord.ui.View()
-    view.add_item(MatchMakingButton(f"is_team_ready_{member1Data['discordId']}_{member2Data['discordId']}"))
+    view.add_item(
+        MatchMakingButton(
+            f"is_team_ready_{member1Data['discordId']}_{member2Data['discordId']}"
+        )
+    )
 
-    teamWelcomeMessage = await teamTextChannel.send("Welcome here ! This is your team text channel.\n\nWhenever you are ready to play, click on the button below to search for a match!\n\nIf ever you want to stop searching for a match, click again.\n\nYou'll receive messages from your opponents directly in this channel to communicate during a match.", view=view)
+    teamWelcomeMessage = await teamTextChannel.send(
+        "Welcome here ! This is your team text channel.\n\nWhenever you are ready to play, click on the button below to search for a match!\n\nIf ever you want to stop searching for a match, click again.\n\nYou'll receive messages from your opponents directly in this channel to communicate during a match.",
+        view=view,
+    )
     await teamWelcomeMessage.pin()
 
     try:
@@ -410,6 +489,7 @@ async def create_team(member1: discord.Member, member2: discord.Member):
     except Exception:
         traceback.print_exc()
     return member1Data["surname"], member2Data["surname"]
+
 
 async def refresh_invites_message(guild: discord.Guild, db: DB):
     """
@@ -429,10 +509,16 @@ async def refresh_invites_message(guild: discord.Guild, db: DB):
     and then edits the message with the new list of invites.
 
     """
-    message = await guild.get_channel(db.get("registration_channel_id")).fetch_message(db.get("invit_message_id"))
+    message = await guild.get_channel(db.get("registration_channel_id")).fetch_message(
+        db.get("invit_message_id")
+    )
     invitesToCheck = db.get("invit_to_check")
     guildInvites = await guild.invites()
-    invites = {invite.code: invite.uses for invite in guildInvites if invite.code in invitesToCheck.keys()}
+    invites = {
+        invite.code: invite.uses
+        for invite in guildInvites
+        if invite.code in invitesToCheck.keys()
+    }
     content = "Liste des invitations sauvegardées actuelles :\n- "
     content += "\n- ".join(
         [
@@ -650,6 +736,7 @@ async def create_match(
         "team2": teams[1],
         "usersIds": allIds,
         "matchType": matchType,
+        "startTime": time.time(),
     }
 
     inscriptionData = await utils.load_json("inscriptions.json")
@@ -657,8 +744,24 @@ async def create_match(
     team1TextChannelId = inscriptionData["teams"][teams[0]]["teamTextChannelId"]
     team2TextChannelId = inscriptionData["teams"][teams[1]]["teamTextChannelId"]
 
-    await guild.get_channel(team1TextChannelId).send("New match found, you are playing against team <@" + teams[1].split("_")[0] + "> & <@" + teams[1].split("_")[1] + ">. Your match is in " + matchType + ".")
-    await guild.get_channel(team2TextChannelId).send("New match found, you are playing against team <@" + teams[0].split("_")[0] + "> & <@" + teams[0].split("_")[1] + ">. Your match is in " + matchType + ".")
+    await guild.get_channel(team1TextChannelId).send(
+        "New match found, you are playing against team <@"
+        + teams[1].split("_")[0]
+        + "> & <@"
+        + teams[1].split("_")[1]
+        + ">. Your match is in "
+        + matchType
+        + "."
+    )
+    await guild.get_channel(team2TextChannelId).send(
+        "New match found, you are playing against team <@"
+        + teams[0].split("_")[0]
+        + "> & <@"
+        + teams[0].split("_")[1]
+        + ">. Your match is in "
+        + matchType
+        + "."
+    )
 
     if teams[0] in matchmakingData["pendingTeams"]["NM"]:
         matchmakingData["pendingTeams"]["NM"].remove(teams[0])
@@ -674,33 +777,32 @@ async def create_match(
     return matchmakingData
 
 
-async def close_match(
-    match: dict, matchmakingData: dict, channel: discord.abc.GuildChannel
-) -> dict:
-
+async def close_match(match: dict, guild: discord.Guild) -> None:
     """
-    Close a match by deleting the match text channel and removing the match from matchmakingData.
+    Close a match by deleting all the messages in the teams' text channels and updating the match making buttons of the teams.
 
     Parameters
     ----------
     match : dict
         A dictionary containing the match data.
-    matchmakingData : dict
-        A dictionary containing the matchmaking data.
-    channel : discord.abc.GuildChannel
-        The channel where the match text channel is located.
+    guild : discord.Guild
+        The guild where the match is taking place.
 
     Returns
     -------
-    dict
-        The updated matchmakingData dictionary.
+    None
     """
-    try:
-        await channel.guild.get_channel(match["matchTextChannelId"]).delete()
-    except Exception:
-        pass
+    channel1 = guild.get_channel(find_channel_id_for_team(match["team1"]))
+    channel2 = guild.get_channel(find_channel_id_for_team(match["team2"]))
 
-    return matchmakingData
+    timestampLimit = match["startTime"]
+
+    timestampLimitDateTime = datetime.fromtimestamp(timestampLimit)
+    await channel1.purge(limit=None, after=timestampLimitDateTime)
+    await channel2.purge(limit=None, after=timestampLimitDateTime)
+
+    await update_button(guild, match["team1"], ButtonType.READY)
+    await update_button(guild, match["team2"], ButtonType.READY)
 
 
 async def find_match_with_user_id(idTemp: int) -> Optional[dict]:
@@ -791,7 +893,6 @@ async def get_country_code_from_geoguessr_id(idTemp: str) -> str:
 async def process_duel_link(
     idTemp: str, match: dict, matchmakingData: dict
 ) -> tuple[str, str]:
-
     """
     Process a duel link and store the duel data in the Google Sheets API.
 

@@ -1,5 +1,5 @@
-from datetime import datetime
 import os
+from datetime import datetime
 
 import gspread_asyncio
 from google.oauth2.service_account import Credentials
@@ -8,14 +8,16 @@ from google.oauth2.service_account import Credentials
 def get_creds():
     """
     Returns a Credentials object with the necessary scopes to use the Google Sheets API.
-    
+
     To obtain a service account JSON file, follow these steps:
     https://gspread.readthedocs.io/en/latest/oauth2.html#for-bots-using-service-account
-    
+
     Returns:
         Credentials: A Credentials object with the necessary scopes.
     """
-    creds = Credentials.from_service_account_file(os.path.join(os.path.dirname(__file__), "..", "json", "creds.json"))
+    creds = Credentials.from_service_account_file(
+        os.path.join(os.path.dirname(__file__), "..", "json", "creds.json")
+    )
     scoped = creds.with_scopes(
         [
             "https://spreadsheets.google.com/feeds",
@@ -30,7 +32,7 @@ def get_creds():
 async def connect_gsheet_api() -> gspread_asyncio.AsyncioGspreadClient:
     """
     Connects to the Google Sheets API using the credentials in the service account JSON file.
-    
+
     Returns:
         gspread_asyncio.AsyncioGspreadClient: A client object to interact with the Google Sheets API.
     """
