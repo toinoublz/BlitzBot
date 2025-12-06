@@ -491,44 +491,6 @@ async def create_team(member1: discord.Member, member2: discord.Member):
     return member1Data["surname"], member2Data["surname"]
 
 
-async def refresh_invites_message(guild: discord.Guild, db: DB):
-    """
-    Refreshes the message containing the list of saved invites.
-
-    Parameters
-    ----------
-    guild : discord.Guild
-        The guild where the message is located.
-    db : DB
-        The database containing the information about the invites.
-
-    Notes
-    -----
-    This function is used to refresh the message containing the list of saved invites.
-    It fetches the message, gets the list of invites to check and the list of invites in the guild,
-    and then edits the message with the new list of invites.
-
-    """
-    message = await guild.get_channel(db.get("registration_channel_id")).fetch_message(
-        db.get("invit_message_id")
-    )
-    invitesToCheck = db.get("invit_to_check")
-    guildInvites = await guild.invites()
-    invites = {
-        invite.code: invite.uses
-        for invite in guildInvites
-        if invite.code in invitesToCheck.keys()
-    }
-    content = "Liste des invitations sauvegardées actuelles :\n- "
-    content += "\n- ".join(
-        [
-            f"{invitesToCheck[key]} ({key}) : {value} utilisation{'' if value == 1 else 's'}"
-            for key, value in invites.items()
-        ]
-    )
-    await message.edit(content=content)
-
-
 def get_duel_score(team1: dict, team2: dict, gamemode: str) -> float:
     """
     Calculate the score of a duel between two teams.
