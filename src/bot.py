@@ -344,11 +344,6 @@ async def on_member_join(member: discord.Member):
     if not logsChannelId:
         return
 
-    try:
-        await hc.refresh_invites_message(member.guild, db)
-    except Exception:
-        pass
-
     await bot.change_presence(
         activity=discord.Activity(
             name=f"{len(member.guild.members)} gens (trop) cools !",
@@ -910,6 +905,14 @@ async def on_message(message: discord.Message):
             except Exception:
                 pass
             await message.delete()
+
+        elif message.content == "$start_mm":
+            await hc.start_matchmaking(message.guild)
+            await message.channel.send("Matchmaking started")
+
+        elif message.content == "$stop_mm":
+            await hc.stop_matchmaking(message.guild)
+            await message.channel.send("Matchmaking stopped")
 
         elif message.content.startswith("$initmessagebienvenue"):
             view = discord.ui.View(timeout=None)

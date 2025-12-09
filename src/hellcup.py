@@ -9,7 +9,6 @@ from typing import Optional
 import aiohttp
 import discord
 from dotenv import load_dotenv
-from easyDB import DB
 
 import gspread_utilities as gu
 import utils
@@ -21,6 +20,7 @@ class ButtonType(enum.Enum):
     READY = 1
     WAITING = 2
     PLAYING = 3
+    OFF = 4
 
 
 class MatchMakingButton(discord.ui.Button):
@@ -34,12 +34,61 @@ class MatchMakingButton(discord.ui.Button):
 
 
 async def find_channel_id_for_team(teamName: str) -> int:
+    """
+    Find the ID of a team's text channel.
+
+    Parameters
+    ----------
+    teamName : str
+        The name of the team.
+
+    Returns
+    -------
+    int
+        The ID of the team's text channel.
+
+    Raises
+    ------
+    KeyError
+        If the team name is not found in the "inscriptions.json" file.
+    """
     inscriptionData = await utils.load_json("inscriptions.json")
     teamTextChannelIdFromTeamName = {
         teamName: teamData["teamTextChannelId"]
         for teamName, teamData in inscriptionData["teams"].items()
     }
     return teamTextChannelIdFromTeamName[teamName]
+
+async def start_matchmaking(guild: discord.Guild):
+    """
+    Start the match making process for all teams in the guild.
+
+    This function updates all the match making buttons in the teams' text channels to the READY state.
+
+    Parameters
+    ----------
+    guild : discord.Guild
+        The guild where the match making buttons are located.
+    """
+    inscriptionData = await utils.load_json("inscriptions.json")
+    for teamName in inscriptionData["teams"].keys():
+        await update_button(guild, teamName, ButtonType.READY)
+
+async def stop_matchmaking(guild: discord.Guild):
+    """
+    Stop the match making process for all teams in the guild.
+
+    This function updates all the match making buttons in the teams' text channels to the OFF state.
+
+    Parameters
+    ----------
+    guild : discord.Guild
+        The guild where the match making buttons are located.
+    """
+
+    inscriptionData = await utils.load_json("inscriptions.json")
+    for teamName in inscriptionData["teams"].keys():
+        await update_button(guild, teamName, ButtonType.OFF)
 
 
 async def update_button(guild: discord.Guild, teamName: str, buttonType: ButtonType):
@@ -74,6 +123,11 @@ async def update_button(guild: discord.Guild, teamName: str, buttonType: ButtonT
         button.disabled = True
         button.label = "⚔️ In a Match ⚔️"
         button.style = discord.ButtonStyle.gray
+    if buttonType == ButtonType.OFF:
+        button.disabled = True
+        button.label = "🎮 Find a Match 🎮"
+        button.style = discord.ButtonStyle.green
+
     await firstMessage.edit(view=view)
 
 
