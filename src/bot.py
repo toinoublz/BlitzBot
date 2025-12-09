@@ -610,7 +610,7 @@ async def on_interaction(interaction: discord.Interaction):
                     )
                     return
 
-                nicknames = await hc.create_team(interaction.user, userMentionned)
+                nicknames = await hc.create_team(interaction.user, userMentionned, db.get("is_on"))
 
                 try:
                     await interaction.followup.send(
@@ -909,10 +909,12 @@ async def on_message(message: discord.Message):
         elif message.content == "$start_mm":
             await hc.start_matchmaking(message.guild)
             await message.channel.send("Matchmaking started")
+            db.modify("is_on", True)
 
         elif message.content == "$stop_mm":
             await hc.stop_matchmaking(message.guild)
             await message.channel.send("Matchmaking stopped")
+            db.modify("is_on", False)
 
         elif message.content.startswith("$initmessagebienvenue"):
             view = discord.ui.View(timeout=None)

@@ -24,12 +24,12 @@ class ButtonType(enum.Enum):
 
 
 class MatchMakingButton(discord.ui.Button):
-    def __init__(self, custom_id: str):
+    def __init__(self, custom_id: str, isOn: bool):
         super().__init__(
             custom_id=custom_id,
             label="🎮 Find a Match 🎮",
             style=discord.ButtonStyle.green,
-            disabled=True,
+            disabled=not isOn,
         )
 
 
@@ -468,7 +468,7 @@ async def team_already_exists(member1: discord.Member, member2: discord.Member):
     )
 
 
-async def create_team(member1: discord.Member, member2: discord.Member):
+async def create_team(member1: discord.Member, member2: discord.Member, isOn: bool):
     """
     Create a new team with the given members.
 
@@ -528,7 +528,7 @@ async def create_team(member1: discord.Member, member2: discord.Member):
     view = discord.ui.View()
     view.add_item(
         MatchMakingButton(
-            f"is_team_ready_{member1Data['discordId']}_{member2Data['discordId']}"
+            f"is_team_ready_{member1Data['discordId']}_{member2Data['discordId']}", isOn
         )
     )
 
