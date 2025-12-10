@@ -9,7 +9,6 @@ from typing import Optional
 import aiohttp
 import discord
 from dotenv import load_dotenv
-from numpy import mat
 
 import gspread_utilities as gu
 import utils

@@ -1,7 +1,6 @@
 import asyncio
 import os
 import re
-import json
 import traceback
 from datetime import datetime
 from datetime import time as d_time
