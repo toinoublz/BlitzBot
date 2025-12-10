@@ -31,4 +31,4 @@ async def write_json(data: dict, filename: str, folder: str = "json") -> None:
     jsonPath = os.path.join(basePath, "..", folder, filename)
 
     async with aiofiles.open(jsonPath, mode="w", encoding="utf-8") as f:
-        await f.write(json.dumps(data))
+        await f.write(json.dumps(data, indent=4))

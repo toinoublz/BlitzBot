@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import json
 import traceback
 from datetime import datetime
 from datetime import time as d_time
@@ -16,6 +17,7 @@ import modals as md
 import utils
 
 user_in_match = []
+matchmakingData = {}
 
 # Charger les variables d'environnement depuis le fichier .env
 load_dotenv()
@@ -558,6 +560,7 @@ async def on_interaction(interaction: discord.Interaction):
     If the custom_id is "NM_button", it will add or remove the NM 30s duels role to the user.
     If the custom_id is "NMPZ_button", it will add or remove the NMPZ 15s duels role to the user.
     """
+    global matchmakingData
     if "custom_id" in interaction.data.keys():
         if interaction.data["custom_id"] == "init_spectator":
             if (
@@ -682,18 +685,22 @@ async def on_interaction(interaction: discord.Interaction):
 
                 await matchmaking_logs(f"**{teamName}** is ready for matchmaking")
 
-                matchmakingData = await utils.load_json("matchmaking.json")
+
+                if not matchmakingData:
+                    matchmakingData = await utils.load_json("matchmaking.json")
                 member1 = interaction.guild.get_member(int(teamName.split("_")[0]))
                 member2 = interaction.guild.get_member(int(teamName.split("_")[1]))
                 nmRole = interaction.guild.get_role(db.get("NM_role_id"))
                 nmpzRole = interaction.guild.get_role(db.get("NMPZ_role_id"))
                 check = False
                 if nmRole in member1.roles and nmRole in member2.roles:
-                    matchmakingData["pendingTeams"]["NM"].append(teamName)
+                    if teamName not in matchmakingData["pendingTeams"]["NM"]:
+                        matchmakingData["pendingTeams"]["NM"].append(teamName)
                     await matchmaking_logs(f"**{teamName}** added to NM queue")
                     check = True
                 if nmpzRole in member1.roles and nmpzRole in member2.roles:
-                    matchmakingData["pendingTeams"]["NMPZ"].append(teamName)
+                    if teamName not in matchmakingData["pendingTeams"]["NMPZ"]:
+                        matchmakingData["pendingTeams"]["NMPZ"].append(teamName)
                     await matchmaking_logs(f"**{teamName}** added to NMPZ queue")
                     check = True
                 await utils.write_json(matchmakingData, "matchmaking.json")
@@ -754,6 +761,7 @@ async def on_interaction(interaction: discord.Interaction):
                             == "🎮 Find a Match 🎮",
                             timeout=timeout,
                         )
+                        break
 
                     except asyncio.TimeoutError:
                         match = availableTeamsPairsScores.pop(0)
@@ -786,7 +794,9 @@ async def on_interaction(interaction: discord.Interaction):
                             matchmakingData
                         )
 
+                        await utils.write_json(matchmakingData, "matchmaking.json")
                     await utils.write_json(matchmakingData, "matchmaking.json")
+                await utils.write_json(matchmakingData, "matchmaking.json")
 
                 await matchmaking_logs("No more match available")
 
@@ -795,12 +805,12 @@ async def on_interaction(interaction: discord.Interaction):
                 await matchmaking_logs(
                     f"**{teamName}** not ready anymore for matchmaking"
                 )
-                matchmakingData = await utils.load_json("matchmaking.json")
-                try:
-                    matchmakingData["pendingTeams"]["NMPZ"].remove(teamName)
+                if not matchmakingData:
+                    matchmakingData = await utils.load_json("matchmaking.json")
+                while teamName in matchmakingData["pendingTeams"]["NM"]:
                     matchmakingData["pendingTeams"]["NM"].remove(teamName)
-                except Exception:
-                    pass
+                while teamName in matchmakingData["pendingTeams"]["NMPZ"]:
+                    matchmakingData["pendingTeams"]["NMPZ"].remove(teamName)
                 await utils.write_json(matchmakingData, "matchmaking.json")
 
 
@@ -848,6 +858,8 @@ async def on_message(message: discord.Message):
     """
     if message.author.bot:
         return
+    
+    global matchmakingData
 
     # Continuer le traitement des autres commandes
     await bot.process_commands(message)
@@ -995,48 +1007,52 @@ async def on_message(message: discord.Message):
             )
         else:
             for idTemp in match["usersIds"]:
-                try:
+                while idTemp in user_in_match:
                     user_in_match.remove(str(idTemp))
-                except Exception:
-                    pass
 
         duelId = duelId.group()
 
-        matchmakingData = await utils.load_json("matchmaking.json")
+        if not matchmakingData:
+            matchmakingData = await utils.load_json("matchmaking.json")
 
-        winningTeam, loosingTeam = await hc.process_duel_link(
-            duelId, match, matchmakingData
-        )
         if match:
-            inscriptionData = await utils.load_json("inscriptions.json")
-            await hc.close_match(match, message.guild)
-            if duelId not in inscriptionData["teams"][winningTeam]["previousDuelIds"]:
-                inscriptionData["teams"][winningTeam]["score"].append("1")
-                inscriptionData["teams"][winningTeam]["previousOpponents"].append(
-                    loosingTeam
-                )
-                inscriptionData["teams"][winningTeam]["previousDuelIds"].append(duelId)
-                inscriptionData["teams"][winningTeam]["lastGamemode"] = match[
-                    "matchType"
-                ]
 
-                inscriptionData["teams"][loosingTeam]["score"].append("0")
-                inscriptionData["teams"][loosingTeam]["previousOpponents"].append(
-                    winningTeam
-                )
-                inscriptionData["teams"][loosingTeam]["previousDuelIds"].append(duelId)
-                inscriptionData["teams"][loosingTeam]["lastGamemode"] = match[
-                    "matchType"
-                ]
+            winningTeam, loosingTeam = await hc.process_duel_link(
+                duelId, match, matchmakingData
+            )
 
-                for playersId in match["usersIds"]:
-                    try:
-                        member = message.guild.get_member(playersId)
-                        await member.send(
-                            "Thanks for your participation ! To play again, just recreate a new vocal by clicking on <#1392420336506503248> and tell your mate to rejoin !"
-                        )
-                    except Exception:
-                        pass
+            try:
+                inscriptionData = await utils.load_json("inscriptions.json")
+                matchmakingData = await hc.close_match(match, message.guild, matchmakingData)
+                if duelId not in inscriptionData["teams"][winningTeam]["previousDuelIds"]:
+                    inscriptionData["teams"][winningTeam]["score"].append("1")
+                    inscriptionData["teams"][winningTeam]["previousOpponents"].append(
+                        loosingTeam
+                    )
+                    inscriptionData["teams"][winningTeam]["previousDuelIds"].append(duelId)
+                    inscriptionData["teams"][winningTeam]["lastGamemode"] = match[
+                        "matchType"
+                    ]
+
+                    inscriptionData["teams"][loosingTeam]["score"].append("0")
+                    inscriptionData["teams"][loosingTeam]["previousOpponents"].append(
+                        winningTeam
+                    )
+                    inscriptionData["teams"][loosingTeam]["previousDuelIds"].append(duelId)
+                    inscriptionData["teams"][loosingTeam]["lastGamemode"] = match[
+                        "matchType"
+                    ]
+
+                    for playersId in match["usersIds"]:
+                        try:
+                            member = message.guild.get_member(playersId)
+                            await member.send(
+                                "Thanks for your participation ! To play again, just recreate a new vocal by clicking on <#1392420336506503248> and tell your mate to rejoin !"
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                traceback.print_exc()
 
             await utils.write_json(inscriptionData, "inscriptions.json")
             await utils.write_json(matchmakingData, "matchmaking.json")

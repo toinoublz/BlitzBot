@@ -9,6 +9,7 @@ from typing import Optional
 import aiohttp
 import discord
 from dotenv import load_dotenv
+from numpy import mat
 
 import gspread_utilities as gu
 import utils
@@ -514,6 +515,7 @@ async def create_team(member1: discord.Member, member2: discord.Member, isOn: bo
         f"{member1Data['surname']}_{member2Data['surname']}", overwrites=overwrites
     )
 
+
     inscriptionData["teams"][
         f"{member1Data['discordId']}_{member2Data['discordId']}"
     ] = {
@@ -763,6 +765,9 @@ async def create_match(
     team1TextChannelId = inscriptionData["teams"][teams[0]]["teamTextChannelId"]
     team2TextChannelId = inscriptionData["teams"][teams[1]]["teamTextChannelId"]
 
+    await update_button(guild, teams[0], ButtonType.PLAYING)
+    await update_button(guild, teams[1], ButtonType.PLAYING)
+
     await guild.get_channel(team1TextChannelId).send(
         "New match found, you are playing against team <@"
         + teams[1].split("_")[0]
@@ -780,13 +785,13 @@ async def create_match(
         + MATCH_INSTRUCTIONS[matchType]
     )
 
-    if teams[0] in matchmakingData["pendingTeams"]["NM"]:
+    while teams[0] in matchmakingData["pendingTeams"]["NM"]:
         matchmakingData["pendingTeams"]["NM"].remove(teams[0])
-    if teams[0] in matchmakingData["pendingTeams"]["NMPZ"]:
+    while teams[0] in matchmakingData["pendingTeams"]["NMPZ"]:
         matchmakingData["pendingTeams"]["NMPZ"].remove(teams[0])
-    if teams[1] in matchmakingData["pendingTeams"]["NM"]:
+    while teams[1] in matchmakingData["pendingTeams"]["NM"]:
         matchmakingData["pendingTeams"]["NM"].remove(teams[1])
-    if teams[1] in matchmakingData["pendingTeams"]["NMPZ"]:
+    while teams[1] in matchmakingData["pendingTeams"]["NMPZ"]:
         matchmakingData["pendingTeams"]["NMPZ"].remove(teams[1])
 
     matchmakingData["currentMatches"].append(matchData)
@@ -794,7 +799,7 @@ async def create_match(
     return matchmakingData
 
 
-async def close_match(match: dict, guild: discord.Guild) -> None:
+async def close_match(match: dict, guild: discord.Guild, matchmakingData: dict) -> dict:
     """
     Close a match by deleting all the messages in the teams' text channels and updating the match making buttons of the teams.
 
@@ -809,8 +814,32 @@ async def close_match(match: dict, guild: discord.Guild) -> None:
     -------
     None
     """
-    channel1 = guild.get_channel(find_channel_id_for_team(match["team1"]))
-    channel2 = guild.get_channel(find_channel_id_for_team(match["team2"]))
+    await update_button(guild, match["team1"], ButtonType.READY)
+    await update_button(guild, match["team2"], ButtonType.READY)
+
+    matchsToRemove = []
+
+    for matchTemp in matchmakingData["currentMatches"]:
+        if match["team1"] == matchTemp["team1"] or match["team1"] == matchTemp["team2"]:
+            matchsToRemove.append(matchTemp)
+    for matchTemp in matchsToRemove:
+        matchmakingData["currentMatches"].remove(matchTemp)
+    matchTypeTemp = "NM" if match["matchType"] == "NM 30s" else "NMPZ"
+    matchmakingData["pendingTeams"][matchTypeTemp].append(match["team1"])
+    matchmakingData["pendingTeams"][matchTypeTemp].append(match["team2"])
+
+    while match["team1"] in matchmakingData["pendingTeams"]["NM"]:
+        matchmakingData["pendingTeams"]["NM"].remove(match["team1"])
+    while match["team1"] in matchmakingData["pendingTeams"]["NMPZ"]:
+        matchmakingData["pendingTeams"]["NMPZ"].remove(match["team1"])
+    while match["team2"] in matchmakingData["pendingTeams"]["NM"]:
+        matchmakingData["pendingTeams"]["NM"].remove(match["team2"])
+    while match["team2"] in matchmakingData["pendingTeams"]["NMPZ"]:
+        matchmakingData["pendingTeams"]["NMPZ"].remove(match["team2"])
+
+
+    channel1 = guild.get_channel(await find_channel_id_for_team(match["team1"]))
+    channel2 = guild.get_channel(await find_channel_id_for_team(match["team2"]))
 
     timestampLimit = match["startTime"]
 
@@ -818,8 +847,8 @@ async def close_match(match: dict, guild: discord.Guild) -> None:
     await channel1.purge(limit=None, after=timestampLimitDateTime)
     await channel2.purge(limit=None, after=timestampLimitDateTime)
 
-    await update_button(guild, match["team1"], ButtonType.READY)
-    await update_button(guild, match["team2"], ButtonType.READY)
+    return matchmakingData
+
 
 
 async def find_match_with_user_id(idTemp: int) -> Optional[dict]:
@@ -1011,7 +1040,6 @@ async def process_duel_link(
 
     await gu.add_duels_infos(duelData)
     if match is not None:
-        matchmakingData["currentMatches"].remove(match)
         winningPlayerId = [
             player["playerId"]
             for team in js["teams"]
