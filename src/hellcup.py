@@ -15,6 +15,9 @@ import utils
 
 load_dotenv()
 
+MATCH_INSTRUCTIONS = {"NM 30s": "Your match is in **NM 30s**.\n- Time after guess : **15 sec**\n- No round limit\n- Initial Health : **6000**\n- Multiplier : **0.5**\n- Rounds without multi : **0**\n- Map : [An Arbritrary World](https://www.geoguessr.com/maps/6089bfcff6a0770001f645dd)\n\nGL & HF !",
+                      "NMPZ 15s": "Your match is in **NMPZ 15s**.\n- Time after guess : **15 sec**\n- No round limit\n- Initial Health : **6000**\n- Multiplier : **0.5**\n- Rounds without multi : **0**\n- Map : [An Arbritray Rural World](https://www.geoguessr.com/maps/643dbc7ccc47d3a344307998)\n\nGL & HF !"}
+
 
 class ButtonType(enum.Enum):
     READY = 1
@@ -765,18 +768,16 @@ async def create_match(
         + teams[1].split("_")[0]
         + "> & <@"
         + teams[1].split("_")[1]
-        + ">. Your match is in "
-        + matchType
-        + "."
+        + ">.\n\n"
+        + MATCH_INSTRUCTIONS[matchType]
     )
     await guild.get_channel(team2TextChannelId).send(
         "New match found, you are playing against team <@"
         + teams[0].split("_")[0]
         + "> & <@"
         + teams[0].split("_")[1]
-        + ">. Your match is in "
-        + matchType
-        + "."
+        + ">.\n\n"
+        + MATCH_INSTRUCTIONS[matchType]
     )
 
     if teams[0] in matchmakingData["pendingTeams"]["NM"]:
